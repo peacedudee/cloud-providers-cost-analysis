@@ -1,0 +1,320 @@
+# Cost-Cutting Playbook: AWS HealthOmics
+> **Companion File:** [omics.md](file:///Users/anjukumari/Desktop/Cloud%20Providers%20Cost%20Analysis/aws/omics/omics.md)
+> **Last Updated:** July 2026
+
+---
+
+## Executive Summary
+AWS HealthOmics (formerly AWS Omics) offers specialized managed infrastructure for genomic, transcriptomic, and proteomic workloads. Because life science datasets (FASTQ, BAM, CRAM, VCF) frequently span tens to hundreds of terabytes and require immense compute for variant calling and alignment, unoptimized HealthOmics environments can quickly generate massive bills. This playbook outlines 18 targeted strategies to optimize HealthOmics costs across storage tiering, workflow rightsizing, compute optimization, and network transfer efficiencies.
+
+## Strategy Categories
+### 1. Waste Elimination
+Eliminating abandoned workflow runs, redundant raw sequence files, and orphaned variant stores.
+
+### 2. Rightsizing
+Tuning CPU, memory, and ephemeral storage allocations within Nextflow/WDL task definitions to avoid over-provisioning compute instances.
+
+### 3. Commitment Discounts
+Transitioning from variable private workflows to fixed-price Ready2Run pipelines where standard biological pipelines are used.
+
+### 4. Architecture Changes
+Aggressively utilizing Omics Archive Sequence Store, transitioning to Variant Stores for querying, and standardizing on compressed formats like CRAM.
+
+### 5. Scheduling & Auto-Scaling
+Triggering analyses efficiently via EventBridge to avoid polling overhead.
+
+### 6. Pricing Model Optimization
+Exploiting the AWS Free Tier for R&D and efficiently managing cross-account billing.
+
+### 7. Network & Data Transfer Optimization
+Preventing massive cross-region data transfer fees and bypassing NAT Gateway processing charges when moving terabytes of genomic data.
+
+---
+
+## Cross-Service Synergies
+- **Amazon S3:** HealthOmics interacts heavily with S3 for data ingress/egress. Optimizing S3 lifecycle policies alongside Omics storage tiers is critical.
+- **Amazon EventBridge:** Automates Omics workflow triggers based on S3 put events.
+- **AWS PrivateLink:** Secures genomic data transit while avoiding NAT Gateway costs.
+- **AWS Cost Explorer / CUR:** Tracks granular task-level and GB-month storage billing for Omics.
+
+---
+
+## Required Input Data for Real-World Analysis
+### A. AWS CUR 2.0
+- Itemized billing for `AWSHealthOmics` usage types (e.g., `Omics-Storage-Active`, `Omics-Compute-RunHour`).
+### B. CloudWatch Metrics
+- Omics workflow run durations and storage utilization metrics.
+### C. AWS Config / Trusted Advisor
+- Region placement for S3 buckets vs. Omics workspaces.
+### D. Company Policies
+- Data retention requirements (e.g., how long raw FASTQ files must be kept vs. aligned BAMs).
+### E. IaC (Optional)
+- Nextflow, WDL, or CWL pipeline definition files to analyze resource requests.
+
+---
+
+## Output Schema
+### Finding Record (JSON)
+```json
+{
+  "finding_id": "OMICS-01",
+  "category": "Waste Elimination",
+  "strategy": "Delete Stale or Failed Workflow Outputs",
+  "estimated_savings_usd": 1500,
+  "risk_level": "Low"
+}
+```
+
+### Summary Report Table
+| ID | Strategy | Category | Risk | Est. Savings |
+|---|---|---|---|---|
+| OMICS-01 | Delete Stale Workflow Outputs | Waste Elimination | Low | 5-10% |
+| OMICS-02 | Remove Redundant FASTQ Files | Waste Elimination | Medium | 10-20% |
+| OMICS-03 | Clean Up Orphaned Variant Stores | Waste Elimination | Low | 5-15% |
+| OMICS-04 | Rightsize Workflow Compute Tasks | Rightsizing | Medium | 20-40% |
+| OMICS-05 | Optimize Ephemeral Storage Allocation | Rightsizing | Low | 5-10% |
+| OMICS-06 | Target CPU vs. GPU Appropriately | Rightsizing | Low | Up to 80% |
+| OMICS-07 | Standardize on Ready2Run Workflows | Commitment Discounts | Medium | Variable |
+| OMICS-08 | Accelerate Archival to Archive Sequence Store | Architecture Changes | Low | Up to 95.5% |
+| OMICS-09 | Standardize on CRAM Formats | Architecture Changes | Medium | 30-50% |
+| OMICS-10 | Consolidate Genomic Queries | Architecture Changes | Medium | 5-10% |
+| OMICS-11 | Prevent Redundant Workflow Executions | Architecture Changes | Low | 5-15% |
+| OMICS-12 | Transition from Custom EC2/S3 to Variant Stores | Architecture Changes | High | 20-60% |
+| OMICS-13 | Event-Driven Workflow Triggers | Scheduling & Auto-Scaling | Low | $15-$50/mo |
+| OMICS-14 | Maximize HealthOmics Free Tier | Pricing Model Optimization | Low | ~$200/mo |
+| OMICS-15 | Implement Tag-Based Cost Allocation | Pricing Model Optimization | Low | 10-20% |
+| OMICS-16 | Localize Compute and Storage | Network & Data Transfer | High | 100% of DTO |
+| OMICS-17 | Implement VPC Endpoints for HealthOmics | Network & Data Transfer | Medium | 75% of processing fees |
+| OMICS-18 | Compress Data Pre-Upload | Network & Data Transfer | Low | 60-75% |
+
+---
+
+## Detailed Strategies
+
+### 1. Waste Elimination
+
+#### 1. OMICS-01. Delete Stale or Failed Workflow Outputs
+- **What:** Identify and delete intermediate data files generated by failed or abandoned private Omics workflows.
+- **Why It Saves Money:** HealthOmics run storage and intermediate S3 buckets accumulate terabytes of junk data from failed pipeline runs, billed at standard storage rates.
+- **Implementation Steps:**
+  1. Audit intermediate S3 buckets used by Omics Workflows.
+  2. Identify data directories associated with failed workflow run IDs.
+  3. Implement lifecycle rules to automatically expire intermediate outputs after 7 days.
+- **Estimated Savings:** 5-10%
+- **Risk Level:** Low
+- **Implementation Scope:** Engineer/DevOps
+- **Prerequisites:** Access to S3 and HealthOmics workflow run logs.
+
+#### 2. OMICS-02. Remove Redundant Raw Sequencing Files
+- **What:** Delete raw FASTQ files if complete alignment data is already stored in BAM or CRAM formats.
+- **Why It Saves Money:** Storing the same genomic data twice (raw unaligned + aligned) doubles storage costs (Active store is $0.09/GB-month).
+- **Implementation Steps:**
+  1. Scan Omics Sequence Stores for duplicate sample IDs existing as both FASTQ and BAM/CRAM.
+  2. Verify with bioinformatics teams if raw FASTQ is required post-alignment.
+  3. Delete redundant FASTQ files.
+- **Estimated Savings:** 10-20%
+- **Risk Level:** Medium
+- **Implementation Scope:** FinOps Team | Engineer/DevOps
+- **Prerequisites:** Bioinformatics approval on data retention.
+
+#### 3. OMICS-03. Clean Up Orphaned Variant Stores
+- **What:** Delete Omics Variant and Annotation Stores from completed, inactive research projects.
+- **Why It Saves Money:** Variant Stores cost $0.005/GB-month. Inactive stores left running continuously accrue costs unnecessarily.
+- **Implementation Steps:**
+  1. Use CloudWatch metrics to identify Variant Stores with zero query activity over 60 days.
+  2. Export required historical variant data to S3 Glacier Deep Archive if needed for compliance.
+  3. Delete the inactive Variant Stores in HealthOmics.
+- **Estimated Savings:** 5-15%
+- **Risk Level:** Low
+- **Implementation Scope:** Engineer/DevOps
+- **Prerequisites:** CloudWatch metrics enabled for HealthOmics.
+
+### 2. Rightsizing
+
+#### 4. OMICS-04. Rightsize Workflow Compute Tasks
+- **What:** Tune the exact CPU and memory resource requirements in Nextflow, WDL, or CWL task definitions to prevent over-provisioning instances.
+- **Why It Saves Money:** HealthOmics private workflows bill based on the compute instances dynamically spun up. Requesting 32 vCPUs for a task that only utilizes 4 vCPUs wastes money.
+- **Implementation Steps:**
+  1. Analyze HealthOmics run logs to determine actual CPU/Memory consumption per pipeline step.
+  2. Update the `cpus` and `memory` directives in the workflow definition files (e.g., Nextflow `.config`).
+  3. Test the pipeline with reduced resources to ensure no out-of-memory (OOM) errors.
+- **Estimated Savings:** 20-40%
+- **Risk Level:** Medium
+- **Implementation Scope:** Engineer/DevOps
+- **Prerequisites:** Access to workflow definition code.
+
+#### 5. OMICS-05. Optimize Ephemeral Storage Allocation
+- **What:** Restrict workflow task ephemeral storage requests to the free 16 GiB limit where possible, avoiding unnecessary allocations up to 3,072 GiB.
+- **Why It Saves Money:** While 16 GiB of run storage is free per task, additional ephemeral storage is billed per GB. Over-allocating storage globally across all tasks quickly inflates the run cost.
+- **Implementation Steps:**
+  1. Review the storage request directives in WDL/Nextflow tasks.
+  2. Strip massive generic storage requests from lightweight tasks (e.g., index generation).
+  3. Only request large ephemeral storage for heavy tasks (e.g., full genome alignment).
+- **Estimated Savings:** 5-10%
+- **Risk Level:** Low
+- **Implementation Scope:** Engineer/DevOps
+- **Prerequisites:** None.
+
+#### 6. OMICS-06. Target CPU vs. GPU Appropriately
+- **What:** Avoid assigning expensive `omics.g.*` (GPU) instances to purely CPU-bound bioinformatics tasks.
+- **Why It Saves Money:** A GPU instance (`omics.g.xlarge`) costs $1.10/hour, while a CPU instance (`omics.c.xlarge`) costs $0.18/hour. Using a GPU for tasks like basic BWA alignment wastes money.
+- **Implementation Steps:**
+  1. Audit workflow definitions for hardcoded GPU requirements or generic instance-type catch-alls.
+  2. Isolate GPU demands strictly to tasks that support CUDA acceleration (e.g., NVIDIA Parabricks steps, AlphaFold).
+  3. Reassign all other tasks to `omics.c` or `omics.r` instance families.
+- **Estimated Savings:** Up to 80%
+- **Risk Level:** Low
+- **Implementation Scope:** Engineer/DevOps
+- **Prerequisites:** Understanding of the biological software's hardware capabilities.
+
+### 3. Commitment Discounts
+
+#### 7. OMICS-07. Standardize on Ready2Run Workflows
+- **What:** Transition common biological pipelines (e.g., GATK, Parabricks) from custom Private Workflows to HealthOmics Ready2Run workflows.
+- **Why It Saves Money:** Ready2Run workflows offer a predictable, fixed cost per run (per sample), removing the variability and optimization overhead of tuning variable run-hour EC2 costs in private pipelines.
+- **Implementation Steps:**
+  1. Evaluate existing custom pipelines against the AWS Ready2Run catalog.
+  2. If a match exists (e.g., Broad Institute GATK best practices), benchmark the Ready2Run fixed cost against current average private workflow costs.
+  3. Migrate standard processing to the Ready2Run endpoints.
+- **Estimated Savings:** Variable
+- **Risk Level:** Medium
+- **Implementation Scope:** Engineer/DevOps | Leadership
+- **Prerequisites:** Pipeline compatibility with Ready2Run versions.
+
+### 4. Architecture Changes
+
+#### 8. OMICS-08. Accelerate Archival to Archive Sequence Store
+- **What:** Automatically move raw FASTQ and aligned BAM files to the Archive Sequence Store immediately after primary analysis completes, rather than waiting for 30-day defaults.
+- **Why It Saves Money:** Active Sequence Store costs $0.09/GB-month. Archive Sequence Store costs $0.004/GB-month. Moving 100 TB immediately saves $8,600/month.
+- **Implementation Steps:**
+  1. Configure Omics Sequence Store tiering policies or API calls to archive datasets.
+  2. Trigger the archive API call as the final step in your primary analysis workflow.
+- **Estimated Savings:** Up to 95.5%
+- **Risk Level:** Low
+- **Implementation Scope:** Engineer/DevOps
+- **Prerequisites:** API integration in pipelines.
+
+#### 9. OMICS-09. Standardize on CRAM Formats
+- **What:** Convert BAM (Binary Alignment Map) files to CRAM format for storage in HealthOmics.
+- **Why It Saves Money:** CRAM provides 30-50% better compression than BAM by using a reference genome. Smaller files mean proportionally lower GB-month storage costs across both Active and Archive tiers.
+- **Implementation Steps:**
+  1. Modify alignment workflows to output `.cram` instead of `.bam`.
+  2. Batch process historical BAM files in the Sequence Store to convert them to CRAM.
+  3. Delete the original BAM files.
+- **Estimated Savings:** 30-50%
+- **Risk Level:** Medium
+- **Implementation Scope:** Engineer/DevOps
+- **Prerequisites:** Downstream tools must support CRAM.
+
+#### 10. OMICS-10. Consolidate Genomic Queries
+- **What:** Batch genomic variant queries rather than running hundreds of small, isolated queries against the Variant Store.
+- **Why It Saves Money:** While Variant Stores charge per GB-month for storage, querying efficiency and external application compute can be optimized by pulling bulk datasets less frequently rather than maintaining constant open query streams.
+- **Implementation Steps:**
+  1. Refactor query applications to request bulk genomic intervals.
+  2. Cache results locally in the application layer.
+- **Estimated Savings:** 5-10%
+- **Risk Level:** Medium
+- **Implementation Scope:** Engineer/DevOps
+- **Prerequisites:** Application code modification.
+
+#### 11. OMICS-11. Prevent Redundant Workflow Executions
+- **What:** Implement workflow execution tracking to prevent re-running expensive genomic pipelines on identical sample inputs.
+- **Why It Saves Money:** Running a whole genome sequencing pipeline costs tens of dollars per sample. Accidental re-runs double the cost.
+- **Implementation Steps:**
+  1. Enable Call Caching if using WDL/Cromwell or the equivalent caching mechanism in Nextflow (e.g., `-resume`).
+  2. Maintain a DynamoDB or RDS ledger of successfully processed Sample IDs and their Omics output URIs.
+  3. Check the ledger before submitting new Omics Workflow run API calls.
+- **Estimated Savings:** 5-15%
+- **Risk Level:** Low
+- **Implementation Scope:** Engineer/DevOps
+- **Prerequisites:** Workflow engine caching support.
+
+#### 12. OMICS-12. Transition from Custom EC2/S3 to Variant Stores
+- **What:** Move custom-built genomic databases (e.g., massive Parquet files in S3 queried by Athena, or EC2 hosted databases) into HealthOmics Variant Stores.
+- **Why It Saves Money:** HealthOmics Variant Stores are purpose-built for genomic queries at $0.005/GB-mo and can eliminate the need for expensive, always-on EC2 database clusters or complex Athena partition management.
+- **Implementation Steps:**
+  1. Export VCF files from current storage.
+  2. Import VCFs into a HealthOmics Variant Store.
+  3. Point query applications to the Omics APIs.
+  4. Decommission legacy EC2 database instances.
+- **Estimated Savings:** 20-60%
+- **Risk Level:** High
+- **Implementation Scope:** Engineer/DevOps | Leadership
+- **Prerequisites:** Extensive application refactoring.
+
+### 5. Scheduling & Auto-Scaling
+
+#### 13. OMICS-13. Event-Driven Workflow Triggers
+- **What:** Use Amazon EventBridge to trigger HealthOmics workflows immediately when sequence data lands in S3.
+- **Why It Saves Money:** Eliminates the need to run 24/7 EC2 instances that just poll S3 buckets waiting for sequencing machines to finish uploading FASTQ files.
+- **Implementation Steps:**
+  1. Configure S3 Event Notifications to send to EventBridge.
+  2. Create an EventBridge rule matching the specific S3 bucket and object prefix.
+  3. Set the EventBridge target to a Lambda function that formats the inputs and calls `StartRun` on the HealthOmics workflow.
+- **Estimated Savings:** $15-$50/mo
+- **Risk Level:** Low
+- **Implementation Scope:** Engineer/DevOps
+- **Prerequisites:** S3 and EventBridge familiarity.
+
+### 6. Pricing Model Optimization
+
+#### 14. OMICS-14. Maximize HealthOmics Free Tier
+- **What:** Ensure Development and Testing environments fully utilize the HealthOmics AWS Free Tier.
+- **Why It Saves Money:** The free tier provides 275 instance-hours of `omics.m.xlarge`, 49,000 GB-hours of run storage, and 1,500 gigabase-months of storage. Failing to use this for R&D wastes free capacity.
+- **Implementation Steps:**
+  1. Isolate Dev/Test Omics workloads into a specific AWS account.
+  2. Monitor usage to keep pipeline testing within the free tier limits.
+  3. Use small subset datasets (e.g., chromosome 20 only) for pipeline testing instead of whole genomes.
+- **Estimated Savings:** ~$200/mo
+- **Risk Level:** Low
+- **Implementation Scope:** FinOps Team
+- **Prerequisites:** Test datasets available.
+
+#### 15. OMICS-15. Implement Tag-Based Cost Allocation
+- **What:** Mandate strict tagging (`Project`, `Researcher`, `Grant_ID`) on all HealthOmics Workflow Runs and Storage Stores.
+- **Why It Saves Money:** HealthOmics costs can easily become a black hole. Tagging enables granular chargebacks to specific research grants, forcing researchers to be financially accountable and naturally reducing waste.
+- **Implementation Steps:**
+  1. Enforce tagging via IAM policies or AWS Organizations SCPs for all `omics:StartRun` and `omics:CreateSequenceStore` calls.
+  2. Activate these tags in AWS Cost Allocation Tags.
+  3. Generate monthly chargeback reports in Cost Explorer.
+- **Estimated Savings:** 10-20%
+- **Risk Level:** Low
+- **Implementation Scope:** FinOps Team | Leadership
+- **Prerequisites:** Organizational tagging strategy.
+
+### 7. Network & Data Transfer Optimization
+
+#### 16. OMICS-16. Localize Compute and Storage
+- **What:** Ensure Omics Workspaces, Sequence Stores, and source S3 buckets are all located in the exact same AWS Region.
+- **Why It Saves Money:** Genomic datasets are massive. Transferring 100 TB of FASTQ files from an S3 bucket in `us-west-2` to a HealthOmics workspace in `us-east-1` incurs cross-region data transfer fees ($0.02/GB), costing $2,000 just to move the data.
+- **Implementation Steps:**
+  1. Audit the regions of current S3 buckets holding source genomic data.
+  2. Provision HealthOmics Workflows and Stores in that same region.
+  3. Restrict cross-region Omics deployments via SCPs.
+- **Estimated Savings:** 100% of DTO
+- **Risk Level:** High
+- **Implementation Scope:** Engineer/DevOps | FinOps Team
+- **Prerequisites:** Omics availability in the target region.
+
+#### 17. OMICS-17. Implement VPC Endpoints for HealthOmics
+- **What:** Use AWS PrivateLink (VPC Endpoints) for HealthOmics traffic originating from VPCs or on-premises over Direct Connect.
+- **Why It Saves Money:** Pushing terabytes of sequencing data to HealthOmics through a Managed NAT Gateway incurs a $0.045/GB data processing charge. A VPC Endpoint keeps traffic on the AWS private network and avoids the NAT Gateway fee.
+- **Implementation Steps:**
+  1. Create an Interface VPC Endpoint for AWS HealthOmics in your VPC.
+  2. Update routing tables and security groups to direct Omics API and data traffic through the endpoint.
+  3. Verify traffic bypasses the NAT Gateway.
+- **Estimated Savings:** 75% of processing fees
+- **Risk Level:** Medium
+- **Implementation Scope:** Engineer/DevOps
+- **Prerequisites:** VPC architecture.
+
+#### 18. OMICS-18. Compress Data Pre-Upload
+- **What:** Ensure all genomic sequence data is heavily compressed locally (e.g., gzipped FASTQ) before uploading to Omics Sequence Stores or intermediate S3 buckets.
+- **Why It Saves Money:** Minimizes Data Transfer Out (DTO) from on-premises and reduces initial ingest storage footprint. Uncompressed genomic data is 3-4x larger.
+- **Implementation Steps:**
+  1. Update sequencing machine output pipelines to gzip all FASTQ files.
+  2. Verify Omics import jobs are receiving `.fastq.gz` files.
+- **Estimated Savings:** 60-75%
+- **Risk Level:** Low
+- **Implementation Scope:** Engineer/DevOps
+- **Prerequisites:** Local compute for compression.

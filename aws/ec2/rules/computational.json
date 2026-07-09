@@ -1,0 +1,93 @@
+{
+  "service": "Amazon EC2",
+  "anomaly_thresholds": {
+    "spend_spike_percentage_mom": 20,
+    "z_score_daily_spend": 3.0,
+    "unusual_api_volume_multiplier": 5.0
+  },
+  "idleness_rules": {
+    "idle_instance": {
+      "metrics": {
+        "cpu_utilization_percent": {"operator": "<", "value": 5},
+        "network_io_kbps": {"operator": "<", "value": 5}
+      },
+      "duration_days": 14,
+      "lever_row": 6
+    },
+    "unattached_eip": {
+      "conditions": [
+        {"field": "ResourceType", "value": "ElasticIP"},
+        {"field": "AttachmentStatus", "value": "unattached"}
+      ],
+      "lever_row": 6
+    },
+    "unused_eni": {
+      "conditions": [
+        {"field": "Status", "value": "available"}
+      ],
+      "lever_row": 6
+    },
+    "stale_ami": {
+      "metrics": {
+        "creation_age_days": {"operator": ">", "value": 180}
+      },
+      "conditions": [
+        {"field": "in_terraform", "value": false}
+      ],
+      "lever_row": 6
+    }
+  },
+  "rightsizing_rules": {
+    "over_provisioned_instance": {
+      "metrics": {
+        "peak_cpu_utilization_percent": {"operator": "<", "value": 30},
+        "ram_utilization_percent": {"operator": "<", "value": 40}
+      },
+      "duration_days": 30,
+      "action": "downsize_1_step",
+      "lever_row": 5
+    },
+    "burstable_candidate": {
+      "metrics": {
+        "baseline_cpu_utilization_percent": {"operator": "<", "value": 15},
+        "traffic_pattern": "sporadic"
+      },
+      "action": "convert_to_t4g",
+      "lever_row": 5
+    }
+  },
+  "modernization_rules": {
+    "graviton4_migration": {
+      "conditions": [
+        {"field": "os", "value": "Linux"},
+        {"field": "instance_family", "in": ["c5", "m5", "r5", "c6i", "m6i", "r6i"]}
+      ],
+      "target_family": ["c8g", "m8g", "r8g"],
+      "estimated_savings_percent": 20,
+      "lever_row": 5
+    },
+    "ebs_gp2_to_gp3": {
+      "conditions": [
+        {"field": "ResourceType", "value": "EBS"},
+        {"field": "VolumeType", "value": "gp2"}
+      ],
+      "target_volume_type": "gp3",
+      "estimated_savings_percent": 20,
+      "lever_row": 12
+    }
+  },
+  "pricing_model_rules": {
+    "compute_savings_plan": {
+      "metrics": {
+        "steady_on_demand_spend_hourly": {"operator": ">", "value": 10}
+      },
+      "duration_days": 30,
+      "lever_row": 31
+    }
+  },
+  "formulas": {
+    "monthly_savings_usd": "sum(current_effective_cost - proposed_effective_cost)",
+    "annual_savings_usd": "monthly_savings_usd * 12",
+    "savings_percentage": "((current_effective_cost - proposed_effective_cost) / current_effective_cost) * 100"
+  }
+}
